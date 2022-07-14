@@ -1,11 +1,20 @@
-# This example code is in the Public Domain (or CC0 licensed, at your option.)
-# Unless required by applicable law or agreed to in writing, this
-# software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-# CONDITIONS OF ANY KIND, either express or implied.
-
 idf_component_register(
     SRCS
         "main.c"
+        "audio.c"
+        "filesystems.c"
+        "menu.c"
+        "graphics_wrapper.c"
     INCLUDE_DIRS
-        "." "include"
+        "."
+        "include"
+    EMBED_FILES
+        ${project_dir}/resources/border.png
+        ${project_dir}/resources/play.png
+        ${project_dir}/resources/rom.png
+        ${project_dir}/resources/save.png
+        ${project_dir}/resources/load.png
+        ${project_dir}/resources/state_save.png
+        ${project_dir}/resources/state_load.png
+        ${project_dir}/resources/joystick.png
 )

@@ -34,3 +34,8 @@ void disp_flush();
 
 // Exits the app, returning to the launcher.
 void exit_to_launcher();
+
+void LoadState();
+void SaveState();
+void LoadSram();
+void SaveSram();
