@@ -1184,7 +1184,15 @@ void app_main(void) {
     if (res != ESP_OK) {
         ESP_LOGE(TAG, "NVS open failed: %d", res);
     }
-    
+
+    int volume;
+    if (nvs_get_i32(nvs_handle_gnuboy, "volume", &volume) == ESP_OK) {
+        printf("Volume set to %u\r\n", volume);
+        audio_volume_set(volume);
+    } else {
+        printf("Failed to read volume level from NVS\r\n");
+    }
+
     nvs_get_str_fixed(nvs_handle_gnuboy, "rom", rom_filename, sizeof(rom_filename) - 1, NULL);
 
     printf("ROM filename: '%s'\n", rom_filename);
@@ -1194,11 +1202,6 @@ void app_main(void) {
         load_sram();
         load_state();
         game_loop();
-    }
-    
-    int volume;
-    if (nvs_get_i32(nvs_handle_gnuboy, "volume", &volume) == ESP_OK) {
-        audio_volume_set(volume);
     }
 
     while(true) {
