@@ -73,6 +73,12 @@ extern const uint8_t play_png_end[] asm("_binary_play_png_end");
 extern const uint8_t joystick_png_start[] asm("_binary_joystick_png_start");
 extern const uint8_t joystick_png_end[] asm("_binary_joystick_png_end");
 
+extern const uint8_t volume_up_png_start[] asm("_binary_volume_up_png_start");
+extern const uint8_t volume_up_png_end[] asm("_binary_volume_up_png_end");
+
+extern const uint8_t volume_down_png_start[] asm("_binary_volume_down_png_start");
+extern const uint8_t volume_down_png_end[] asm("_binary_volume_down_png_end");
+
 extern void cpu_reset();
 extern int cpu_emulate(int cycles);
 extern void loadstate_rom(const unsigned char* rom);
@@ -82,7 +88,7 @@ struct pcm pcm;
 
 static nvs_handle_t nvs_handle_gnuboy;
 
-char rom_filename[256] = {0};
+char rom_filename[512] = {0};
 
 uint16_t* displayBuffer[2]; //= { fb0, fb0 }; //[160 * 144];
 uint8_t currentBuffer = 0;
@@ -164,10 +170,11 @@ void exit_to_launcher() {
     esp_restart();
 }
 
-void display_state(const char* text) {
+void display_state(const char* text, uint16_t delay) {
     pax_draw_image(&pax_buffer, &border, 0, 0);
     pax_draw_text(&pax_buffer, 0xFFFFFFFF, font, 18, 0, pax_buffer.height - 18, text);
     disp_flush();
+    vTaskDelay(pdMS_TO_TICKS(delay));
 }
 
 void display_fatal_error(const char* line0, const char* line1, const char* line2, const char* line3) {
@@ -182,12 +189,12 @@ void display_fatal_error(const char* line0, const char* line1, const char* line2
     vTaskDelay(pdMS_TO_TICKS(1000));
 }
 
-void show_error(const char* message) {
+void show_error(const char* message, uint16_t delay) {
     ESP_LOGE(TAG, "%s", message);
     pax_background(&pax_buffer, 0xa85a32);
     render_message(&pax_buffer, message);
     disp_flush();
-    wait_for_button();
+    vTaskDelay(pdMS_TO_TICKS(delay));
 }
 
 void show_message(const char* message, uint16_t delay) {
@@ -490,7 +497,7 @@ size_t sdcard_copy_file_to_memory(const char* path, void* ptr)
 
 void load_state() {
     if (rom_filename[0] == '\0') {
-        show_error("No ROM loaded");
+        show_error("No ROM loaded", 100);
         return;
     }
     char* fileName = system_util_GetFileName(rom_filename);
@@ -511,12 +518,12 @@ void load_state() {
     }
     free(pathName);
     free(fileName);
-    show_message("State loaded", 100);
+    display_state("State loaded", 50);
 }
 
 void save_state() {
     if (rom_filename[0] == '\0') {
-        show_error("No ROM loaded");
+        show_error("No ROM loaded", 100);
         return;
     }
     char* fileName = system_util_GetFileName(rom_filename);
@@ -535,12 +542,12 @@ void save_state() {
     printf("%s: savestate OK.\n", __func__);
     free(pathName);
     free(fileName);
-    show_message("Game state saved", 100);
+    show_message("Game state saved", 50);
 }
 
 void load_sram() {
     if (rom_filename[0] == '\0') {
-        show_error("No ROM loaded");
+        show_error("No ROM loaded", 100);
         return;
     }
     char* fileName = system_util_GetFileName(rom_filename);
@@ -549,8 +556,7 @@ void load_sram() {
     if (!pathName) abort();
     FILE* f = fopen(pathName, "r");
     if (f == NULL) {
-        show_message("Failed to load SRAM", 100);
-        show_message("Failed to load SRAM", 100);
+        display_state("Failed to load SRAM", 100);
     } else {
         sram_load(f);
         fclose(f);
@@ -559,7 +565,7 @@ void load_sram() {
         sound_dirty();
         mem_updatemap();
         printf("SRAM loaded.\n");
-        show_message("SRAM loaded", 100);
+        display_state("SRAM loaded", 50);
     }
     free(pathName);
     free(fileName);
@@ -567,7 +573,7 @@ void load_sram() {
 
 void save_sram() {
     if (rom_filename[0] == '\0') {
-        show_error("No ROM loaded");
+        show_error("No ROM loaded", 100);
         return;
     }
     char* fileName = system_util_GetFileName(rom_filename);
@@ -586,7 +592,7 @@ void save_sram() {
     printf("SRAM saved.");
     free(pathName);
     free(fileName);
-    show_message("SRAM saved", 100);
+    display_state("SRAM saved", 100);
 }
 
 
@@ -634,13 +640,19 @@ uint8_t* load_file_to_ram(FILE* fd, size_t* fsize) {
 typedef enum action {
     ACTION_NONE,
     ACTION_LOAD_ROM,
+    ACTION_LOAD_ROM_INT,
     ACTION_LOAD_SAVE,
     ACTION_STORE_SAVE,
     ACTION_LOAD_STATE,
     ACTION_STORE_STATE,
     ACTION_RUN,
-    ACTION_EXIT
+    ACTION_EXIT,
+    ACTION_VOLUME_DOWN,
+    ACTION_VOLUME_UP,
+    ACTION_RESET
 } menu_action_t;
+
+static size_t menu_pos = 0;
 
 menu_action_t show_menu() {
     menu_t* menu = menu_alloc("GNUBOY Gameboy emulator", 34, 18);
@@ -649,11 +661,11 @@ menu_action_t show_menu() {
     menu->bgTextColor       = 0xFF000000;
     menu->selectedItemColor = 0xFFfec859;
     menu->borderColor       = 0xFF491d88;
-    menu->titleColor        = 0xFFfec859;
-    menu->titleBgColor      = 0xFF491d88;
+    menu->titleColor        = 0xFF491d88;
+    menu->titleBgColor      = 0xFFfec859;
     menu->scrollbarBgColor  = 0xFFCCCCCC;
     menu->scrollbarFgColor  = 0xFF555555;
-    menu->grid_entry_count_y = 2;
+    menu->grid_entry_count_y = 3;
 
     pax_buf_t icon_rom;
     pax_decode_png_buf(&icon_rom, (void*) rom_png_start, rom_png_end - rom_png_start, PAX_BUF_32_8888ARGB, 0);
@@ -669,25 +681,37 @@ menu_action_t show_menu() {
     pax_decode_png_buf(&icon_state_load, (void*) state_load_png_start, state_load_png_end - state_load_png_start, PAX_BUF_32_8888ARGB, 0);    
     pax_buf_t icon_joystick;
     pax_decode_png_buf(&icon_joystick, (void*) joystick_png_start, joystick_png_end - joystick_png_start, PAX_BUF_32_8888ARGB, 0);
+    pax_buf_t icon_volume_up;
+    pax_decode_png_buf(&icon_volume_up, (void*) volume_up_png_start, volume_up_png_end - volume_up_png_start, PAX_BUF_32_8888ARGB, 0);
+    pax_buf_t icon_volume_down;
+    pax_decode_png_buf(&icon_volume_down, (void*) volume_down_png_start, volume_down_png_end - volume_down_png_start, PAX_BUF_32_8888ARGB, 0);
     
     menu_set_icon(menu, &icon_joystick);
     
-    menu_insert_item_icon(menu, "Select ROM", NULL, (void*) ACTION_LOAD_ROM, -1, &icon_rom);
-    menu_insert_item_icon(menu, "Load sram", NULL, (void*) ACTION_LOAD_SAVE, -1, &icon_load);
-    menu_insert_item_icon(menu, "Save sram", NULL, (void*) ACTION_STORE_SAVE, -1, &icon_save);
-    menu_insert_item_icon(menu, "Start game", NULL, (void*) ACTION_RUN, -1, &icon_play);
+    menu_insert_item_icon(menu, "Browse SD", NULL, (void*) ACTION_LOAD_ROM, -1, &icon_rom);
+    menu_insert_item_icon(menu, "Browse int.", NULL, (void*) ACTION_LOAD_ROM_INT, -1, &icon_rom);
+    menu_insert_item(menu, "", NULL, (void*) ACTION_NONE, -1);
+    menu_insert_item_icon(menu, "Play!", NULL, (void*) ACTION_RUN, -1, &icon_play);
+    menu_insert_item_icon(menu, "Vol. down", NULL, (void*) ACTION_VOLUME_DOWN, -1, &icon_volume_down);
+    menu_insert_item_icon(menu, "Vol. up", NULL, (void*) ACTION_VOLUME_UP, -1, &icon_volume_up);
     menu_insert_item_icon(menu, "Load state", NULL, (void*) ACTION_LOAD_STATE, -1, &icon_state_load);
     menu_insert_item_icon(menu, "Save state", NULL, (void*) ACTION_STORE_STATE, -1, &icon_state_save);
+    menu_insert_item_icon(menu, "Reset state", NULL, (void*) ACTION_RESET, -1, &icon_play);
+    //menu_insert_item_icon(menu, "Load RAM", NULL, (void*) ACTION_LOAD_SAVE, -1, &icon_load);
+    //menu_insert_item_icon(menu, "Save RAM", NULL, (void*) ACTION_STORE_SAVE, -1, &icon_save);
     
     bool render = true;
     bool quit = false;
     menu_action_t action = ACTION_NONE;
     pax_noclip(&pax_buffer);
+    
+    menu_set_position(menu, menu_pos);
+    
     while (!quit) {
         if (render) {
             const pax_font_t* font = pax_font_saira_regular;
             pax_background(&pax_buffer, 0xFFFFFF);
-            menu_render_grid(&pax_buffer, menu, 0, 0, 320, 160);
+            menu_render_grid(&pax_buffer, menu, 0, 0, 320, 220);//160);
             pax_draw_text(&pax_buffer, 0xFF491d88, font, 18, 5, 240 - 18, "🅰 select 🅷 exit");
             disp_flush();
             render = false;
@@ -733,6 +757,9 @@ menu_action_t show_menu() {
             }
         }
     }
+    
+    menu_pos = menu_get_position(menu);
+    
     menu_free(menu);
     pax_buf_destroy(&icon_joystick);
     pax_buf_destroy(&icon_load);
@@ -741,6 +768,8 @@ menu_action_t show_menu() {
     pax_buf_destroy(&icon_save);
     pax_buf_destroy(&icon_state_load);
     pax_buf_destroy(&icon_state_save);
+    pax_buf_destroy(&icon_volume_up);
+    pax_buf_destroy(&icon_volume_down);
     return action;
 }
 
@@ -782,6 +811,17 @@ void find_parent_dir(char* path, char* parent) {
     parent[last_separator] = '\0';
 }
 
+bool ends_with(const char* input, const char* end) {
+    size_t input_length = strlen(input);
+    size_t end_length = strlen(end);
+    for (size_t position = 0; position < end_length; position++) {
+        if (input[input_length - position - 1] != end[end_length - position - 1]) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool file_browser(const char* initial_path, char* selected_file) {
     bool result = false;
     char path[512] = {0};
@@ -819,7 +859,12 @@ bool file_browser(const char* initial_path, char* selected_file) {
             }
 
             snprintf(args->label, sizeof(args->label), "%s%s", ent->d_name, (args->type == 'd') ? "/" : "");
-            menu_insert_item(menu, args->label, NULL, args, -1);
+            
+            if ((args->type == 'f') && (!(ends_with(ent->d_name, ".gb") || ends_with(ent->d_name, ".gbc")))) {
+                free(args);
+            } else {
+                menu_insert_item(menu, args->label, NULL, args, -1);
+            }
         }
         closedir(dir);
 
@@ -900,12 +945,12 @@ bool file_browser(const char* initial_path, char* selected_file) {
     return result;
 }
 
-void load_rom(bool browser) {
+bool load_rom(bool browser, bool sd_card) {
     if (browser) {
-        if (!file_browser("/sd", rom_filename)) return;
+        if (!file_browser(sd_card ? "/sd" : "/internal", rom_filename)) return false;
     }
     
-    show_message("Loading ROM...", 0);
+    display_state("Loading ROM...", 0);
     
     if (rom_data != NULL) {
         free(rom_data);
@@ -916,8 +961,8 @@ void load_rom(bool browser) {
     if (rom_fd == NULL) {
         memset(rom_filename, 0, sizeof(rom_filename));
         nvs_set_str(nvs_handle_gnuboy, "rom", rom_filename);
-        show_error("Failed to open ROM file");
-        return;
+        show_error("Failed to open ROM file", 100);
+        return false;
     }
 
     size_t rom_length;
@@ -927,8 +972,8 @@ void load_rom(bool browser) {
     if (rom_data == NULL) {
         memset(rom_filename, 0, sizeof(rom_filename));
         nvs_set_str(nvs_handle_gnuboy, "rom", rom_filename);
-        show_error("Failed to load ROM file");
-        return;
+        show_error("Failed to load ROM file", 100);
+        return false;
     }
 
     loader_init(rom_data);
@@ -936,18 +981,18 @@ void load_rom(bool browser) {
     lcd_begin();
     sound_reset();
     
-    show_message("ROM loaded", 100);
+    display_state("ROM loaded", 100);
     
     nvs_set_str(nvs_handle_gnuboy, "rom", rom_filename);
     printf("ROM filename stored: '%s'\n", rom_filename);
-    
 
     load_sram();
+    return true;
 }
 
 void game_loop() {
     if (rom_filename[0] == '\0') {
-        show_error("No ROM loaded");
+        show_error("No ROM loaded", 100);
         return;
     }
     pax_draw_image(&pax_buffer, &border, 0, 0);
@@ -1025,7 +1070,9 @@ void game_loop() {
                         }
                         break;
                     case RP2040_INPUT_BUTTON_MENU:
-                        quit = true;
+                        if (value) {
+                            quit = true;
+                        }
                     default:
                         break;
                 }
@@ -1041,16 +1088,12 @@ void app_main(void) {
 
     pax_decode_png_buf(&border, (void*) border_png_start, border_png_end - border_png_start, PAX_BUF_16_565RGB, 0);
 
-    display_state("Initializing co-processor...");
+    display_state("Initializing...", 0);
     
     bsp_rp2040_init();
     button_queue = get_rp2040()->queue;
-    
-    display_state("Initializing NVS, WiFi and audio...");
-    
-    nvs_flash_init();
 
-    display_state("Initializing graphics...");
+    nvs_flash_init();
     
     esp_err_t res;
     
@@ -1128,12 +1171,12 @@ void app_main(void) {
     audioBuffer[1] = (int32_t*) heap_caps_malloc(AUDIO_BUFFER_SIZE, MALLOC_CAP_8BIT | MALLOC_CAP_DMA);
     
     if (audioBuffer[0] == NULL) {
-        show_error("Failed to allocate audio buffer 0");
+        show_error("Failed to allocate audio buffer 0", 100);
         exit_to_launcher();
     }
     
     if (audioBuffer[1] == NULL) {
-        show_error("Failed to allocate audio buffer 1");
+        show_error("Failed to allocate audio buffer 1", 100);
         exit_to_launcher();
     }
 
@@ -1147,10 +1190,15 @@ void app_main(void) {
     printf("ROM filename: '%s'\n", rom_filename);
 
     if (rom_filename[0] != '\0') {
-        load_rom(false);
+        load_rom(false, false);
         load_sram();
         load_state();
         game_loop();
+    }
+    
+    int volume;
+    if (nvs_get_i32(nvs_handle_gnuboy, "volume", &volume) == ESP_OK) {
+        audio_volume_set(volume);
     }
 
     while(true) {
@@ -1166,7 +1214,28 @@ void app_main(void) {
                 exit_to_launcher();
                 break;
             case ACTION_LOAD_ROM:
-                load_rom(true);
+                if (rom_filename[0] != '\0') {
+                    audio_stop();
+                    save_sram();
+                    save_state();
+                }
+                if (load_rom(true, true)) {
+                    load_state();
+                    audio_resume();
+                    game_loop();
+                }
+                break;
+            case ACTION_LOAD_ROM_INT:
+                if (rom_filename[0] != '\0') {
+                    audio_stop();
+                    save_sram();
+                    save_state();
+                }
+                if (load_rom(true, false)) {
+                    load_state();
+                    audio_resume();
+                    game_loop();
+                }
                 break;
             case ACTION_LOAD_SAVE:
                 load_sram();
@@ -1184,6 +1253,44 @@ void app_main(void) {
                 audio_resume();
                 game_loop();
                 break;
+            case ACTION_RESET:
+                if (rom_filename[0] == '\0') {
+                    show_error("No ROM loaded", 100);
+                } else {
+                    load_rom(false, false);
+                    save_state();
+                    audio_resume();
+                    game_loop();
+                }
+                break;
+            case ACTION_VOLUME_DOWN: {
+                int volume = audio_volume_decrease();
+                nvs_set_i32(nvs_handle_gnuboy, "volume", volume);
+                char message[32];
+                message[31] = '\0';
+                uint8_t volume_percent = 0;
+                if (volume == 1) volume_percent = 25;
+                if (volume == 2) volume_percent = 50;
+                if (volume == 3) volume_percent = 75;
+                if (volume == 4) volume_percent = 100;
+                snprintf(message, sizeof(message) - 1, "Volume set to %u%%\n", volume_percent);
+                show_message(message, 50);
+                break;
+            }
+            case ACTION_VOLUME_UP: {
+                int volume = audio_volume_increase();
+                nvs_set_i32(nvs_handle_gnuboy, "volume", volume);
+                char message[32];
+                message[31] = '\0';
+                uint8_t volume_percent = 0;
+                if (volume == 1) volume_percent = 25;
+                if (volume == 2) volume_percent = 50;
+                if (volume == 3) volume_percent = 75;
+                if (volume == 4) volume_percent = 100;
+                snprintf(message, sizeof(message) - 1, "Volume set to %u%%\n", volume_percent);
+                show_message(message, 50);
+                break;
+            }
             default:
                 ESP_LOGW(TAG, "Action %u", (uint8_t) action);
         }

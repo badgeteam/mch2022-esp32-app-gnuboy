@@ -22,6 +22,8 @@ void audio_stop();
 void audio_resume();
 volume_level audio_volume_get();
 void audio_volume_set(volume_level value);
-void audio_volume_change();
+int audio_volume_change();
+int audio_volume_increase();
+int audio_volume_decrease();
 
 #endif

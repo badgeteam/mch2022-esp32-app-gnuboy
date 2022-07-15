@@ -17,4 +17,6 @@ idf_component_register(
         ${project_dir}/resources/state_save.png
         ${project_dir}/resources/state_load.png
         ${project_dir}/resources/joystick.png
+        ${project_dir}/resources/volume-down.png
+        ${project_dir}/resources/volume-up.png
 )

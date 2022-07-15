@@ -9,7 +9,7 @@
 
 static bool active = false;
 
-static float Volume = 1.0f;//0.5f;
+static float Volume = 1.0f;
 static volume_level volumeLevel = VOLUME_LEVEL1;
 static int volumeLevels[] = {0, 125, 250, 500, 1000};
 
@@ -27,11 +27,25 @@ void audio_volume_set(volume_level value) {
     Volume = (float)volumeLevels[value] * 0.001f;
 }
 
-void audio_volume_change() {
+int audio_volume_change() {
     int level = (volumeLevel + 1) % VOLUME_LEVEL_COUNT;
     audio_volume_set(level);
+    return level;
+}
 
-    // settings_Volume_set(level);
+int audio_volume_increase() {
+    int level = volumeLevel + 1;
+    if (level >= VOLUME_LEVEL_COUNT - 1) {
+        level = VOLUME_LEVEL_COUNT - 1;
+    }
+    audio_volume_set(level);
+    return level;
+}
+
+int audio_volume_decrease() {
+    int level = (volumeLevel - 1) % VOLUME_LEVEL_COUNT;
+    audio_volume_set(level);
+    return level;
 }
 
 void audio_init(int sample_rate) {
