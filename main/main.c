@@ -403,51 +403,64 @@ char* system_util_GetFileName(const char* path)
     return result;
 }
 
-char* sdcard_create_savefile_path(const char* base_path, const char* fileName, const char* ext)
-{
-    char* result = NULL;
-
-    if (!base_path) abort();
-    if (!fileName) abort();
-
-    printf("%s: base_path='%s', fileName='%s'\n", __func__, base_path, fileName);
-
-    // Determine folder
-    const char* extension = fileName + strlen(fileName); // place at NULL terminator
-    while (extension != fileName)
-    {
-        if (*extension == '.')
-        {
-            ++extension;
+char* create_savefile_path(const char* rom_filename, const char* ext) {
+    if (!rom_filename) return NULL;
+    if (!ext) return NULL;
+    
+    int path_end = -1;
+    int ext_pos = -1;
+    
+    for (int i = strlen(rom_filename) - 1; i >= 0; i--) {
+        if (ext_pos == -1) {
+            if (rom_filename[i] == '.') {
+                ext_pos = i;
+            }
+        }
+        if (rom_filename[i] == '/') {
+            path_end = i;
             break;
         }
-        --extension;
     }
-
-    if (extension == fileName)
-    {
-        printf("%s: File extention not found.\n", __func__);
-        abort();
+    
+    if ((path_end < 0) || (ext_pos < 0)) {
+        ESP_LOGE(TAG, "Can't find savefile path");
+        return NULL;
     }
-
-    //printf("%s: extension='%s'\n", __func__, extension);
-
-    const char* DATA_PATH = "/gnuboy/";
-
-    size_t savePathLength = strlen(base_path) + strlen(DATA_PATH) + strlen(fileName) + strlen(ext) + 1;
-    char* savePath = malloc(savePathLength);
-    if (savePath)
-    {
-        strcpy(savePath, base_path);
-        strcat(savePath, DATA_PATH);
-        strcat(savePath, fileName);
-        strcat(savePath, ext);
-
-        printf("%s: savefile_path='%s'\n", __func__, savePath);
-
-        result = savePath;
+    
+    char* path = strdup(rom_filename);
+    if (path == NULL) return NULL;
+    path[path_end] = '\0';
+    char* filename = malloc(strlen(&rom_filename[path_end + 1]) + 1);
+    if (filename == NULL) {
+        free(path);
+        return NULL;
     }
+    memcpy(filename, &rom_filename[path_end + 1], strlen(&rom_filename[path_end + 1]));
+    filename[strlen(&rom_filename[path_end + 1])] = '\0';
+    char* filename_without_type = strdup(filename);
+    if (filename_without_type == NULL) {
+        free(path);
+        free(filename);
+        return NULL;
+    }
+    filename_without_type[ext_pos - strlen(path) - 1] = '\0';
 
+    size_t result_len = strlen(path) + 1 + strlen(filename_without_type) + 1 + strlen(ext);
+    char* result = malloc(result_len);
+    memset(result, 0, result_len);
+    if (result != NULL) {
+        strcat(result, path);
+        strcat(result, "/");
+        strcat(result, filename_without_type);
+        strcat(result, ".");
+        strcat(result, ext);
+        printf("%s\n", result);
+    }
+    
+    free(path);
+    free(filename);
+    free(filename_without_type);
+    
     return result;
 }
 
@@ -495,18 +508,18 @@ size_t sdcard_copy_file_to_memory(const char* path, void* ptr)
     return ret;
 }
 
-void load_state() {
+bool load_state() {
+    printf("LOADING STATE\n");
     if (rom_filename[0] == '\0') {
         show_error("No ROM loaded", 100);
         return;
     }
-    char* fileName = system_util_GetFileName(rom_filename);
-    if (!fileName) abort();
-    char* pathName = sdcard_create_savefile_path(SD_BASE_PATH, fileName, ".sta");
+    char* pathName = create_savefile_path(rom_filename, "sta");
     if (!pathName) abort();
     FILE* f = fopen(pathName, "r");
     if (f == NULL) {
         printf("load_state: fopen load failed\n");
+        return false;
     } else {
         loadstate(f);
         fclose(f);
@@ -517,42 +530,38 @@ void load_state() {
         printf("load_state: loadstate OK.\n");
     }
     free(pathName);
-    free(fileName);
     display_state("State loaded", 50);
+    return true;
 }
 
 void save_state() {
+    printf("SAVING STATE\n");
     if (rom_filename[0] == '\0') {
         show_error("No ROM loaded", 100);
         return;
     }
-    char* fileName = system_util_GetFileName(rom_filename);
-    if (!fileName) abort();
-    char* pathName = sdcard_create_savefile_path(SD_BASE_PATH, fileName, ".sta");
+    char* pathName = create_savefile_path(rom_filename, "sta");
     if (!pathName) abort();
     FILE* f = fopen(pathName, "w");
     if (f == NULL) {
         printf("%s: fopen save failed (%s)\n", __func__, pathName);
         free(pathName);
-        free(fileName);
         return;
     }
     savestate(f);
     fclose(f);
     printf("%s: savestate OK.\n", __func__);
     free(pathName);
-    free(fileName);
     show_message("Game state saved", 50);
 }
 
 void load_sram() {
+    printf("LOADING SRAM\n");
     if (rom_filename[0] == '\0') {
         show_error("No ROM loaded", 100);
         return;
     }
-    char* fileName = system_util_GetFileName(rom_filename);
-    if (!fileName) abort();
-    char* pathName = sdcard_create_savefile_path(SD_BASE_PATH, fileName, ".srm");
+    char* pathName = create_savefile_path(rom_filename, "srm");
     if (!pathName) abort();
     FILE* f = fopen(pathName, "r");
     if (f == NULL) {
@@ -568,30 +577,26 @@ void load_sram() {
         display_state("SRAM loaded", 50);
     }
     free(pathName);
-    free(fileName);
 }
 
 void save_sram() {
+    printf("SAVING SRAM\n");
     if (rom_filename[0] == '\0') {
         show_error("No ROM loaded", 100);
         return;
     }
-    char* fileName = system_util_GetFileName(rom_filename);
-    if (!fileName) abort();
-    char* pathName = sdcard_create_savefile_path(SD_BASE_PATH, fileName, ".srm");
+    char* pathName = create_savefile_path(rom_filename, "srm");
     if (!pathName) abort();
     FILE* f = fopen(pathName, "w");
     if (f == NULL) {
         printf("SRAM save failed\n");
         free(pathName);
-        free(fileName);
         return;
     }
     sram_save(f);
     fclose(f);
     printf("SRAM saved.");
     free(pathName);
-    free(fileName);
     display_state("SRAM saved", 100);
 }
 
@@ -641,8 +646,6 @@ typedef enum action {
     ACTION_NONE,
     ACTION_LOAD_ROM,
     ACTION_LOAD_ROM_INT,
-    ACTION_LOAD_SAVE,
-    ACTION_STORE_SAVE,
     ACTION_LOAD_STATE,
     ACTION_STORE_STATE,
     ACTION_RUN,
@@ -697,8 +700,6 @@ menu_action_t show_menu() {
     menu_insert_item_icon(menu, "Load state", NULL, (void*) ACTION_LOAD_STATE, -1, &icon_state_load);
     menu_insert_item_icon(menu, "Save state", NULL, (void*) ACTION_STORE_STATE, -1, &icon_state_save);
     menu_insert_item_icon(menu, "Reset state", NULL, (void*) ACTION_RESET, -1, &icon_play);
-    //menu_insert_item_icon(menu, "Load RAM", NULL, (void*) ACTION_LOAD_SAVE, -1, &icon_load);
-    //menu_insert_item_icon(menu, "Save RAM", NULL, (void*) ACTION_STORE_SAVE, -1, &icon_save);
     
     bool render = true;
     bool quit = false;
@@ -985,8 +986,6 @@ bool load_rom(bool browser, bool sd_card) {
     
     nvs_set_str(nvs_handle_gnuboy, "rom", rom_filename);
     printf("ROM filename stored: '%s'\n", rom_filename);
-
-    load_sram();
     return true;
 }
 
@@ -1199,8 +1198,9 @@ void app_main(void) {
 
     if (rom_filename[0] != '\0') {
         load_rom(false, false);
-        load_sram();
-        load_state();
+        if (!load_state()) {
+            load_sram();
+        }
         game_loop();
     }
 
@@ -1223,7 +1223,9 @@ void app_main(void) {
                     save_state();
                 }
                 if (load_rom(true, true)) {
-                    load_state();
+                    if (!load_state()) {
+                        load_sram();
+                    }
                     audio_resume();
                     game_loop();
                 }
@@ -1235,22 +1237,23 @@ void app_main(void) {
                     save_state();
                 }
                 if (load_rom(true, false)) {
-                    load_state();
+                    if (!load_state()) {
+                        load_sram();
+                    }
                     audio_resume();
                     game_loop();
                 }
                 break;
-            case ACTION_LOAD_SAVE:
-                load_sram();
-                break;
-            case ACTION_STORE_SAVE:
-                save_sram();
-                break;
             case ACTION_LOAD_STATE:
                 load_state();
+                audio_resume();
+                game_loop();
                 break;
             case ACTION_STORE_STATE:
                 save_state();
+                save_sram();
+                audio_resume();
+                game_loop();
                 break;
             case ACTION_RUN:
                 audio_resume();
@@ -1262,6 +1265,7 @@ void app_main(void) {
                 } else {
                     load_rom(false, false);
                     save_state();
+                    load_sram();
                     audio_resume();
                     game_loop();
                 }
