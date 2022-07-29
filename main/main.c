@@ -403,64 +403,43 @@ char* system_util_GetFileName(const char* path)
     return result;
 }
 
+/**
+ * @brief Replace the extension of the given file name with the save extension and return the result as a new string
+ *
+ * @param rom_filename
+ * @param ext
+ * @return char*
+ */
 char* create_savefile_path(const char* rom_filename, const char* ext) {
     if (!rom_filename) return NULL;
     if (!ext) return NULL;
+    size_t ext_len = strlen(ext);
     
-    int path_end = -1;
-    int ext_pos = -1;
     
-    for (int i = strlen(rom_filename) - 1; i >= 0; i--) {
-        if (ext_pos == -1) {
-            if (rom_filename[i] == '.') {
-                ext_pos = i;
-            }
-        }
-        if (rom_filename[i] == '/') {
-            path_end = i;
-            break;
-        }
+    // Find the extension point (and with that the length of the existing extension)
+    char* existing_ext = strrchr(rom_filename, '.');
+    char* result;
+    if (!existing_ext) {
+        // No extension, so add one
+        existing_ext = &rom_filename[strlen(rom_filename)];
     }
-    
-    if ((path_end < 0) || (ext_pos < 0)) {
-        ESP_LOGE(TAG, "Can't find savefile path");
+    size_t filename_without_ext_len = strlen(rom_filename) - strlen(existing_ext);
+    size_t result_len =
+        filename_without_ext_len
+        + 1
+        + ext_len
+        + 1;
+    result = malloc(result_len);
+    if (result == NULL) {
+        ESP_LOGE(TAG, "Can't allocate memory for savefile path");
         return NULL;
     }
-    
-    char* path = strdup(rom_filename);
-    if (path == NULL) return NULL;
-    path[path_end] = '\0';
-    char* filename = malloc(strlen(&rom_filename[path_end + 1]) + 1);
-    if (filename == NULL) {
-        free(path);
-        return NULL;
-    }
-    memcpy(filename, &rom_filename[path_end + 1], strlen(&rom_filename[path_end + 1]));
-    filename[strlen(&rom_filename[path_end + 1])] = '\0';
-    char* filename_without_type = strdup(filename);
-    if (filename_without_type == NULL) {
-        free(path);
-        free(filename);
-        return NULL;
-    }
-    filename_without_type[ext_pos - strlen(path) - 1] = '\0';
+    memcpy(result, rom_filename, filename_without_ext_len);
+    result[filename_without_ext_len] = '.';
+    memcpy(&result[filename_without_ext_len + 1], ext, ext_len);
+    result[filename_without_ext_len + 1 + ext_len] = '\0';
 
-    size_t result_len = strlen(path) + 1 + strlen(filename_without_type) + 1 + strlen(ext);
-    char* result = malloc(result_len);
-    memset(result, 0, result_len);
-    if (result != NULL) {
-        strcat(result, path);
-        strcat(result, "/");
-        strcat(result, filename_without_type);
-        strcat(result, ".");
-        strcat(result, ext);
-        printf("%s\n", result);
-    }
-    
-    free(path);
-    free(filename);
-    free(filename_without_type);
-    
+    ESP_LOGI(TAG, "create_savefile_path = %s", result);
     return result;
 }
 
