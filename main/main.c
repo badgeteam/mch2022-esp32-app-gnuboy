@@ -415,8 +415,6 @@ char* create_savefile_path(const char* rom_filename, const char* ext) {
     if (!ext) return NULL;
     size_t ext_len = strlen(ext);
     
-    int path_end = -1;
-    int ext_pos = -1;
     
     // Find the extension point (and with that the length of the existing extension)
     char* existing_ext = strrchr(rom_filename, '.');
